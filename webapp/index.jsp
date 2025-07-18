@@ -9,5 +9,6 @@
     <h1>Deadlock Stats Application</h1>
     <p>JSP Server is running!</p>
     <p>Current Time: <%= new java.util.Date().toString() %></p>
+    <p>Java Version: <%= System.getProperty("java.version") %></p>
 </body>
 </html>
