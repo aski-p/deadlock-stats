@@ -6,19 +6,15 @@ RUN rm -rf /usr/local/tomcat/webapps/*
 # Copy webapp
 COPY webapp/ /usr/local/tomcat/webapps/ROOT/
 
-# JSP 컴파일 에러 방지를 위한 설정
-ENV CATALINA_OPTS="-Djava.awt.headless=true -Dfile.encoding=UTF-8 -server -Xms512m -Xmx1024m"
-ENV JAVA_OPTS="-Djava.security.egd=file:/dev/./urandom"
+# Management Bean 관련 문제 해결을 위한 설정
+ENV CATALINA_OPTS="-Djava.awt.headless=true -Dfile.encoding=UTF-8 -server -Xms256m -Xmx512m"
+ENV JAVA_OPTS="-Djava.security.egd=file:/dev/./urandom -Dcom.sun.management.jmxremote=false"
 
-# Create startup script that handles dynamic port
-RUN echo '#!/bin/bash\n\
-if [ -n "$PORT" ]; then\n\
-  sed -i "s/8080/$PORT/g" /usr/local/tomcat/conf/server.xml\n\
-fi\n\
-catalina.sh run' > /start.sh && chmod +x /start.sh
+# JMX 및 Management 기능 비활성화
+RUN sed -i '/GlobalResourcesLifecycleListener/d' /usr/local/tomcat/conf/server.xml
 
-# Expose dynamic port
-EXPOSE $PORT
+# Expose port
+EXPOSE 8080
 
-# Use startup script
-CMD ["/start.sh"]
+# Start tomcat
+CMD ["catalina.sh", "run"]
