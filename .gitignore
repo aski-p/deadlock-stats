@@ -1,0 +1,71 @@
+# IDE and Editor files
+.vscode/
+.vscode-server/
+.idea/
+*.swp
+*.swo
+*~
+
+# Java
+*.class
+*.jar
+*.war
+*.ear
+*.nar
+hs_err_pid*
+
+# JDK and Runtime
+openjdk-11/
+jre/
+jdk/
+
+# Tomcat
+apache-tomcat-*/
+tomcat/
+
+# Cache and temporary files
+.cache/
+.tmp/
+*.tmp
+*.log
+*.pid
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Claude CLI files
+.claude/
+
+# Railway deployment files
+railway-deploy/
+
+# Supabase MCP
+supabase-mcp/
+
+# Dotnet files
+.dotnet/
+
+# Gemini files
+.gemini/
+
+# Config files
+.config/
+
+# Local binary files
+.local/
+
+# Bash history
+.bash_history
+.bash_logout
+.bashrc
+
+# MOTD files
+.motd_shown

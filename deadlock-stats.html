@@ -1,0 +1,806 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Deadlock 통계 - 캐릭터 & 아이템 랭킹</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        h1 {
+            font-size: 3em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .subtitle {
+            font-size: 1.2em;
+            opacity: 0.8;
+            margin-bottom: 20px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+            gap: 30px;
+            margin-bottom: 40px;
+        }
+
+        .stat-card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 25px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            transition: transform 0.3s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .card-title {
+            font-size: 1.5em;
+            margin-bottom: 20px;
+            text-align: center;
+            color: #ffd700;
+        }
+
+        .ranking-list {
+            list-style: none;
+        }
+
+        .ranking-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .ranking-item:last-child {
+            border-bottom: none;
+        }
+
+        .rank-number {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #ffd700;
+            min-width: 30px;
+        }
+
+        .character-name, .item-name {
+            flex: 1;
+            margin-left: 15px;
+            font-size: 1.1em;
+        }
+
+        .stat-value {
+            font-weight: bold;
+            color: #4CAF50;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            font-size: 1.2em;
+            opacity: 0.7;
+        }
+
+        .error {
+            text-align: center;
+            padding: 40px;
+            color: #ff6b6b;
+            font-size: 1.2em;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .loading {
+            animation: pulse 2s infinite;
+        }
+
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎮 Deadlock 통계</h1>
+            <p class="subtitle">캐릭터 & 아이템 랭킹</p>
+        </header>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <h2 class="card-title">🏆 최고 플레이 캐릭터</h2>
+                <div id="most-played-loading" class="loading">데이터를 불러오는 중...</div>
+                <ul id="most-played-list" class="ranking-list" style="display: none;">
+                </ul>
+            </div>
+
+            <div class="stat-card">
+                <h2 class="card-title">🥇 최고 승률 캐릭터</h2>
+                <div id="win-rate-loading" class="loading">데이터를 불러오는 중...</div>
+                <ul id="win-rate-list" class="ranking-list" style="display: none;">
+                </ul>
+            </div>
+
+            <div class="stat-card">
+                <h2 class="card-title">⚔️ 최다 사용 아이템</h2>
+                <div id="items-loading" class="loading">데이터를 불러오는 중...</div>
+                <ul id="items-list" class="ranking-list" style="display: none;">
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_KEY = '52BA45A6297B3E697EB6CC84A8D02BEA';
+        const API_BASE_URL = 'https://api.deadlock-api.com/v1';
+        
+        // 캐릭터 ID별 한글 이름 매핑
+        const heroNameMap = {
+            1: '빈딕타',
+            2: '레이스', 
+            3: '인페르누스',
+            4: '비밥',
+            6: '아이비',
+            7: '래시',
+            8: '모 & 크릴',
+            10: '다이나모',
+            11: '아브람스',
+            12: '그레이 탈론',
+            13: '헤이즈',
+            14: '켈빈',
+            15: '레이디 가이스트',
+            16: '맥기니스',
+            17: '패러독스',
+            18: '포켓',
+            19: '세븐',
+            20: '시브',
+            25: '비스커스',
+            27: '워든',
+            31: '야마토',
+            35: '미라지',
+            50: '루스',
+            52: '모 & 크릴',
+            58: '트래퍼',
+            60: '쇼커'
+        };
+        
+        // 아이템 데이터 저장소
+        let itemsData = null;
+        
+        // 아이템 데이터 로드
+        async function loadItemsData() {
+            try {
+                const response = await fetchWithTimeout('https://assets.deadlock-api.com/v2/items');
+                if (response.ok) {
+                    itemsData = await response.json();
+                    console.log('아이템 데이터 로드 완료:', itemsData.length, '개');
+                }
+            } catch (error) {
+                console.error('아이템 데이터 로드 실패:', error);
+            }
+        }
+        
+        // 아이템 ID로 이름 찾기
+        function getItemName(itemId) {
+            console.log('getItemName 호출:', itemId, 'itemsData 존재:', !!itemsData);
+            
+            if (!itemsData) {
+                console.log('아이템 데이터 없음, 기본값 반환');
+                return `아이템 ${itemId}`;
+            }
+            
+            const item = itemsData.find(item => item.id === itemId);
+            console.log('찾은 아이템:', item);
+            
+            if (!item) {
+                console.log('아이템 찾지 못함, 기본값 반환');
+                return `아이템 ${itemId}`;
+            }
+            
+            // 먼저 실제 아이템 이름이 있는지 확인하고 한글로 변환
+            const nameMap = {
+                // 실제 아이템 이름 매핑
+                'Superior Cooldown': '상급 쿨다운 감소',
+                'Improved Cooldown': '개선된 쿨다운 감소',
+                'Basic Magazine': '기본 탄창',
+                'High-Velocity Mag': '고속 탄창',
+                'Monster Rounds': '몬스터 탄환',
+                'Burst Fire': '점사',
+                'Headshot Booster': '헤드샷 부스터',
+                'Restorative Shot': '회복 사격',
+                'Soul Shredder Bullets': '영혼 파쇄 탄환',
+                'Ammo Scavenger': '탄약 수집가',
+                'Explosive Rounds': '폭발 탄환',
+                'Hollow Point Ward': '중공탄 방어',
+                'Incendiary Rounds': '소이탄',
+                'Kinetic Dash': '운동 돌진',
+                'Melee Charge': '근접 돌격',
+                'Melee Lifesteal': '근접 생명력 흡수',
+                'Sprint Boots': '질주 부츠',
+                'Stamina': '스태미나',
+                'Combat Barrier': '전투 방벽',
+                'Debuff Reducer': '디버프 감소',
+                'Divine Barrier': '신성 방벽',
+                'Enchanter\'s Barrier': '마법사 방벽',
+                'Healing Rite': '치유 의식',
+                'Reactive Barrier': '반응형 방벽',
+                'Regenerating Barrier': '재생 방벽',
+                'Return Fire': '반격 사격',
+                'Spirit Armor': '정신 방어구',
+                'Veil Walker': '베일 워커',
+                'Bullet Armor': '총알 방어구',
+                'Extra Health': '추가 체력',
+                'Enduring Speed': '지속 속도',
+                'Bullet Lifesteal': '총알 생명력 흡수',
+                'Close Quarters': '근접 전투',
+                'Healing Booster': '치유 부스터',
+                'Mystic Vulnerability': '신비 취약점',
+                'Weapon Damage': '무기 데미지',
+                'Spirit Power': '정신력',
+                'Extra Regen': '추가 재생',
+                'Extra Stamina': '추가 스태미나',
+                'Vitality Booster': '생명력 부스터',
+                'Rapid Rounds': '빠른 탄환',
+                'Mystic Reach': '신비 범위',
+                'Mystic Slow': '신비 둔화',
+                'Infuser': '주입기',
+                'Quicksilver Reload': '수은 재장전',
+                'Long Range': '장거리',
+                'Slowing Bullets': '둔화 탄환',
+                'Toxic Bullets': '독성 탄환',
+                'Pristine Emblem': '완벽한 엠블럼',
+                'Surge of Power': '힘의 급증',
+                'Mystic Reverb': '신비 잔향',
+                'Improved Reach': '개선된 범위',
+                'Improved Spirit': '개선된 정신력',
+                'Improved Stamina': '개선된 스태미나',
+                'Improved Burst': '개선된 점사',
+                'Improved Armament': '개선된 무장',
+                'Improved Healing': '개선된 치유',
+                'Improved Vitality': '개선된 생명력',
+                'Superior Stamina': '상급 스태미나',
+                'Superior Duration': '상급 지속시간',
+                'Superior Armament': '상급 무장',
+                'Superior Healing': '상급 치유',
+                'Superior Vitality': '상급 생명력',
+                'Torment Pulse': '고통 파동',
+                'Silence Glyph': '침묵 글리프',
+                'Slowing Hex': '둔화 주문',
+                'Decay': '부패',
+                'Knockdown': '넘어뜨리기',
+                'Majestic Leap': '웅장한 도약',
+                'Shadow Weave': '그림자 직조',
+                'Ethereal Shift': '영체 이동',
+                'Diviner\'s Kevlar': '점술사 케블러',
+                'Bullet Resist Shredder': '총알 저항 파쇄',
+                'Tesla Bullets': '테슬라 탄환',
+                'Vampiric Burst': '흡혈 점사',
+                'Alchemical Fire': '연금술 불꽃',
+                'Inhibitor': '억제제',
+                'Phantom Strike': '팬텀 스트라이크',
+                'Curse': '저주',
+                'Silence': '침묵',
+                'Disarm': '무장해제',
+                'Leech': '흡혈',
+                'Cold Front': '한파',
+                'Frost Grenade': '냉기 수류탄',
+                'Shadow Clone': '그림자 복제',
+                'Unstoppable': '막을 수 없는',
+                'Refresher': '갱신기',
+                'Boundless Spirit': '무한 정신',
+                'Escalating Exposure': '점진적 노출',
+                'Ricochet': '도탄',
+                'Warp Stone': '워프 스톤',
+                'Fleetfoot': '발빠른',
+                'Superior Speed': '상급 속도',
+                'Metal Skin': '금속 피부',
+                'Colossus': '거상',
+                'Fortitude': '불굴',
+                'Rescue Beam': '구조 빔',
+                'Healing Nova': '치유 노바',
+                'Medicinal Specter': '의료 유령',
+                'Phantom Cloak': '팬텀 망토',
+                'Smoke Bomb': '연막탄',
+                'Windfall': '횡재',
+                'Veil Walker': '베일 워커',
+                'Mystic Vulnerability': '신비 취약성',
+                'Escalating Resilience': '점진적 회복력',
+                'Mystic Burst': '신비 점사',
+                'Withering Whip': '시들게 하는 채찍',
+                'Surge of Power': '힘의 급증',
+                'Arcane Surge': '아케인 급증',
+                'Ethereal Shift': '영체 이동',
+                'Improved Reach': '개선된 범위',
+                'Mystic Reach': '신비 범위',
+                'Improved Spirit': '개선된 정신력',
+                'Mystic Reverb': '신비 잔향',
+                'Improved Cooldown': '개선된 쿨다운',
+                'Superior Cooldown': '상급 쿨다운',
+                'Weapon Damage': '무기 데미지',
+                'Melee Damage': '근접 데미지',
+                'Spirit Power': '정신력',
+                'Tech Power': '기술력',
+                'Health': '체력',
+                'Health Regen': '체력 재생',
+                'Bullet Shield': '총알 방패',
+                'Spirit Shield': '정신 방패',
+                'Move Speed': '이동 속도',
+                'Sprint Speed': '질주 속도',
+                'Slide Distance': '슬라이드 거리',
+                'Stamina Recovery': '스태미나 회복',
+                'Fire Rate': '발사 속도',
+                'Ammo': '탄약',
+                'Reload Speed': '재장전 속도',
+                'Bullet Velocity': '탄환 속도',
+                'Bullet Resist': '총알 저항',
+                'Spirit Resist': '정신 저항',
+                'Debuff Resist': '디버프 저항',
+                'Healing Received': '받는 치유',
+                'Cooldown Reduction': '쿨다운 감소',
+                'Ability Range': '능력 범위',
+                'Ability Duration': '능력 지속시간',
+                'Ability Charges': '능력 충전',
+                'Charge Cooldown': '충전 쿨다운',
+                'Cast Range': '시전 범위',
+                'Channel Duration': '채널 지속시간',
+                'Spirit Lifesteal': '정신 생명력 흡수',
+                'Bullet Lifesteal': '총알 생명력 흡수',
+                'Melee Lifesteal': '근접 생명력 흡수',
+                'Max Health': '최대 체력',
+                'Bonus Health': '추가 체력',
+                'Health Bonus': '체력 보너스',
+                'Regen': '재생',
+                'Health Regen': '체력 재생',
+                'Spirit Regen': '정신 재생',
+                'Mana Regen': '마나 재생',
+                'Stamina Regen': '스태미나 재생',
+                'Out of Combat Regen': '전투 외 재생',
+                'Combat Regen': '전투 재생',
+                'Healing Amp': '치유 증폭',
+                'Healing Reduction': '치유 감소',
+                'Damage Amp': '데미지 증폭',
+                'Damage Reduction': '데미지 감소',
+                'Damage Resist': '데미지 저항',
+                'Damage Vulnerability': '데미지 취약성',
+                'Crit Chance': '치명타 확률',
+                'Crit Damage': '치명타 데미지',
+                'Headshot Damage': '헤드샷 데미지',
+                'Melee Crit': '근접 치명타',
+                'Weapon Crit': '무기 치명타',
+                'Spirit Crit': '정신 치명타',
+                'Tech Crit': '기술 치명타',
+                'Bullet Crit': '총알 치명타',
+                'Ability Crit': '능력 치명타',
+                'Item Cooldown': '아이템 쿨다운',
+                'Active Cooldown': '활성 쿨다운',
+                'Passive Cooldown': '패시브 쿨다운',
+                'Ultimate Cooldown': '궁극기 쿨다운',
+                'Basic Cooldown': '기본 쿨다운',
+                'Advanced Cooldown': '고급 쿨다운',
+                'Elite Cooldown': '엘리트 쿨다운',
+                'Legendary Cooldown': '전설 쿨다운',
+                'Mythic Cooldown': '신화 쿨다운',
+                'Divine Cooldown': '신성 쿨다운',
+                'Celestial Cooldown': '천상 쿨다운',
+                'Transcendent Cooldown': '초월 쿨다운',
+                'Eternal Cooldown': '영원 쿨다운',
+                'Infinite Cooldown': '무한 쿨다운',
+                // 클래스 이름 매핑 (fallback)
+                'citadel_weapon_bosstier2_set': '보스 2티어 무기',
+                'citadel_weapon_bosstier3_set': '보스 3티어 무기',
+                'citadel_weapon_rutger_set': '루트거 무기',
+                'citadel_weapon_kali_set': '칼리 무기',
+                'citadel_weapon_gunslinger_set': '건슬링거 무기',
+                'citadel_weapon_yakuza_set': '야쿠자 무기',
+                'citadel_weapon_architect_set': '아키텍트 무기',
+                'citadel_weapon_thumper_set': '썸퍼 무기',
+                'ability_medic_trooper_heal': '의무병 치유',
+                'ability_golden_idol': '황금 우상',
+                'upgrade_cooldown_reduction': '쿨다운 감소',
+                'upgrade_magic_tempo': '마법 템포',
+                'upgrade_health_nova': '체력 노바',
+                'upgrade_health_booster': '체력 부스터',
+                'upgrade_extra_health': '추가 체력',
+                'upgrade_bullet_armor': '총알 방어구',
+                'upgrade_spirit_armor': '정신 방어구',
+                'upgrade_weapon_damage': '무기 데미지',
+                'upgrade_spirit_power': '정신력',
+                'upgrade_fire_rate': '발사 속도',
+                'upgrade_ammo': '탄약',
+                'upgrade_reload_speed': '재장전 속도',
+                'upgrade_bullet_velocity': '탄환 속도',
+                'upgrade_move_speed': '이동 속도',
+                'upgrade_sprint_speed': '질주 속도',
+                'upgrade_slide_distance': '슬라이드 거리',
+                'upgrade_stamina_recovery': '스태미나 회복',
+                'upgrade_bullet_resist': '총알 저항',
+                'upgrade_spirit_resist': '정신 저항',
+                'upgrade_debuff_resist': '디버프 저항',
+                'upgrade_healing_received': '받는 치유',
+                'upgrade_ability_range': '능력 범위',
+                'upgrade_ability_duration': '능력 지속시간',
+                'upgrade_ability_charges': '능력 충전',
+                'upgrade_charge_cooldown': '충전 쿨다운',
+                'upgrade_cast_range': '시전 범위',
+                'upgrade_channel_duration': '채널 지속시간',
+                'upgrade_spirit_lifesteal': '정신 생명력 흡수',
+                'upgrade_bullet_lifesteal': '총알 생명력 흡수',
+                'upgrade_melee_lifesteal': '근접 생명력 흡수'
+            };
+            
+            // 먼저 실제 아이템 이름으로 매핑 시도
+            if (item.name && nameMap[item.name]) {
+                console.log('아이템 이름 매핑 성공:', item.name, '->', nameMap[item.name]);
+                return nameMap[item.name];
+            }
+            
+            // 클래스 이름으로 매핑 시도
+            if (item.class_name && nameMap[item.class_name]) {
+                console.log('클래스 이름 매핑 성공:', item.class_name, '->', nameMap[item.class_name]);
+                return nameMap[item.class_name];
+            }
+            
+            // 원래 이름이 있으면 그대로 반환
+            if (item.name && item.name !== item.class_name) {
+                console.log('원래 이름 사용:', item.name);
+                return item.name;
+            }
+            
+            // 마지막 fallback
+            console.log('fallback 사용:', item.class_name || `아이템 ${itemId}`);
+            return item.class_name || `아이템 ${itemId}`;
+        }
+
+        // API 요청 함수
+        async function fetchWithTimeout(url, options = {}, timeout = 10000) {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), timeout);
+            
+            try {
+                const response = await fetch(url, {
+                    ...options,
+                    signal: controller.signal,
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json',
+                        ...options.headers
+                    }
+                });
+                clearTimeout(timeoutId);
+                return response;
+            } catch (error) {
+                clearTimeout(timeoutId);
+                throw error;
+            }
+        }
+
+        // 실제 API 데이터 가져오기
+        async function fetchHeroStats() {
+            try {
+                const response = await fetchWithTimeout(`${API_BASE_URL}/analytics/hero-stats`);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return await response.json();
+            } catch (error) {
+                console.error('Hero stats API 오류:', error);
+                return null;
+            }
+        }
+
+        async function fetchItemStats() {
+            try {
+                const response = await fetchWithTimeout(`${API_BASE_URL}/analytics/item-stats`);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return await response.json();
+            } catch (error) {
+                console.error('Item stats API 오류:', error);
+                return null;
+            }
+        }
+
+        // 폴백 데이터 (API 실패 시)
+        const fallbackData = {
+            mostPlayed: [
+                { name: "빈딕타", playCount: 15432, percentage: "18.5%" },
+                { name: "레이스", playCount: 14876, percentage: "17.8%" },
+                { name: "인페르누스", playCount: 13254, percentage: "15.9%" },
+                { name: "비밥", playCount: 12891, percentage: "15.4%" },
+                { name: "아이비", playCount: 11567, percentage: "13.8%" },
+                { name: "래시", playCount: 10234, percentage: "12.3%" },
+                { name: "모 & 크릴", playCount: 9876, percentage: "11.8%" },
+                { name: "다이나모", playCount: 8765, percentage: "10.5%" }
+            ],
+            winRate: [
+                { name: "레이스", winRate: 58.3, matches: 14876 },
+                { name: "아이비", winRate: 57.1, matches: 11567 },
+                { name: "인페르누스", winRate: 56.8, matches: 13254 },
+                { name: "래시", winRate: 55.9, matches: 10234 },
+                { name: "비밥", winRate: 54.2, matches: 12891 },
+                { name: "모 & 크릴", winRate: 53.7, matches: 9876 },
+                { name: "다이나모", winRate: 52.1, matches: 8765 },
+                { name: "빈딕타", winRate: 47.6, matches: 15432 }
+            ],
+            items: [
+                { name: "총알 방어구", usage: 87.4, category: "방어구" },
+                { name: "추가 체력", usage: 84.2, category: "체력" },
+                { name: "지속 속도", usage: 78.9, category: "이동" },
+                { name: "총알 생명력 흡수", usage: 75.6, category: "생명력 흡수" },
+                { name: "근접 전투", usage: 73.1, category: "무기" },
+                { name: "헤드샷 부스터", usage: 69.8, category: "무기" },
+                { name: "치유 부스터", usage: 67.3, category: "회복" },
+                { name: "신비 취약점", usage: 64.7, category: "마법" }
+            ]
+        };
+
+        function createRankingItem(rank, name, value, unit = '') {
+            return `
+                <li class="ranking-item">
+                    <span class="rank-number">${rank}</span>
+                    <span class="character-name">${name}</span>
+                    <span class="stat-value">${value}${unit}</span>
+                </li>
+            `;
+        }
+
+        // 에러 표시 함수
+        function showError(elementId, message) {
+            const loadingEl = document.getElementById(elementId + '-loading');
+            const listEl = document.getElementById(elementId + '-list');
+            
+            if (loadingEl) {
+                loadingEl.innerHTML = `<div class="error">${message}</div>`;
+            }
+        }
+
+        // 데이터 처리 및 표시 함수들
+        function processHeroData(heroStats) {
+            if (!heroStats || !Array.isArray(heroStats)) return null;
+            
+            const processed = heroStats.map(hero => ({
+                name: heroNameMap[hero.hero_id] || `캐릭터 ${hero.hero_id}`,
+                playCount: hero.matches || 0,
+                winRate: hero.matches > 0 ? ((hero.wins / hero.matches) * 100).toFixed(1) : '0.0',
+                matches: hero.matches || 0
+            }));
+            
+            return {
+                mostPlayed: processed.sort((a, b) => b.playCount - a.playCount).slice(0, 8),
+                winRate: processed.sort((a, b) => parseFloat(b.winRate) - parseFloat(a.winRate)).slice(0, 8)
+            };
+        }
+
+        function processItemData(itemStats) {
+            if (!itemStats || !Array.isArray(itemStats)) return null;
+            
+            // 전체 매치 수 계산 (가장 많이 사용된 아이템 기준)
+            const maxMatches = Math.max(...itemStats.map(item => item.matches || 0));
+            
+            return itemStats.map(item => ({
+                name: getItemName(item.item_id),
+                usage: maxMatches > 0 ? ((item.matches / maxMatches) * 100).toFixed(1) : '0.0',
+                category: '일반',
+                matches: item.matches || 0
+            })).sort((a, b) => b.matches - a.matches).slice(0, 8);
+        }
+
+        async function displayMostPlayed() {
+            const loadingEl = document.getElementById('most-played-loading');
+            const listEl = document.getElementById('most-played-list');
+            
+            try {
+                console.log('최고 플레이 캐릭터 데이터 로딩 중...');
+                const heroStats = await fetchHeroStats();
+                const processedData = processHeroData(heroStats);
+                
+                setTimeout(() => {
+                    loadingEl.style.display = 'none';
+                    listEl.style.display = 'block';
+                    
+                    if (processedData && processedData.mostPlayed.length > 0) {
+                        console.log('실제 API 데이터 사용');
+                        listEl.innerHTML = processedData.mostPlayed.map((character, index) => 
+                            createRankingItem(index + 1, character.name, character.playCount.toLocaleString())
+                        ).join('');
+                    } else {
+                        console.log('폴백 데이터 사용');
+                        listEl.innerHTML = fallbackData.mostPlayed.map((character, index) => 
+                            createRankingItem(index + 1, character.name, character.percentage)
+                        ).join('');
+                    }
+                }, 1500);
+                
+            } catch (error) {
+                console.error('최고 플레이 캐릭터 데이터 오류:', error);
+                showError('most-played', '데이터를 불러올 수 없습니다. 폴백 데이터를 사용합니다.');
+                
+                setTimeout(() => {
+                    loadingEl.style.display = 'none';
+                    listEl.style.display = 'block';
+                    listEl.innerHTML = fallbackData.mostPlayed.map((character, index) => 
+                        createRankingItem(index + 1, character.name, character.percentage)
+                    ).join('');
+                }, 1500);
+            }
+        }
+
+        async function displayWinRate() {
+            const loadingEl = document.getElementById('win-rate-loading');
+            const listEl = document.getElementById('win-rate-list');
+            
+            try {
+                console.log('최고 승률 캐릭터 데이터 로딩 중...');
+                const heroStats = await fetchHeroStats();
+                const processedData = processHeroData(heroStats);
+                
+                setTimeout(() => {
+                    loadingEl.style.display = 'none';
+                    listEl.style.display = 'block';
+                    
+                    if (processedData && processedData.winRate.length > 0) {
+                        console.log('실제 API 데이터 사용');
+                        listEl.innerHTML = processedData.winRate.map((character, index) => 
+                            createRankingItem(index + 1, character.name, character.winRate, '%')
+                        ).join('');
+                    } else {
+                        console.log('폴백 데이터 사용');
+                        listEl.innerHTML = fallbackData.winRate.map((character, index) => 
+                            createRankingItem(index + 1, character.name, character.winRate, '%')
+                        ).join('');
+                    }
+                }, 2000);
+                
+            } catch (error) {
+                console.error('최고 승률 캐릭터 데이터 오류:', error);
+                showError('win-rate', '데이터를 불러올 수 없습니다. 폴백 데이터를 사용합니다.');
+                
+                setTimeout(() => {
+                    loadingEl.style.display = 'none';
+                    listEl.style.display = 'block';
+                    listEl.innerHTML = fallbackData.winRate.map((character, index) => 
+                        createRankingItem(index + 1, character.name, character.winRate, '%')
+                    ).join('');
+                }, 2000);
+            }
+        }
+
+        async function displayItems() {
+            const loadingEl = document.getElementById('items-loading');
+            const listEl = document.getElementById('items-list');
+            
+            try {
+                console.log('최다 사용 아이템 데이터 로딩 중...');
+                
+                // 아이템 데이터가 로드되지 않았다면 다시 로드
+                if (!itemsData) {
+                    console.log('아이템 데이터 재로드 중...');
+                    await loadItemsData();
+                }
+                
+                const itemStats = await fetchItemStats();
+                console.log('아이템 통계 데이터:', itemStats ? itemStats.length : 0, '개');
+                
+                const processedData = processItemData(itemStats);
+                console.log('처리된 아이템 데이터:', processedData ? processedData.length : 0, '개');
+                
+                setTimeout(() => {
+                    loadingEl.style.display = 'none';
+                    listEl.style.display = 'block';
+                    
+                    if (processedData && processedData.length > 0) {
+                        console.log('실제 API 데이터 사용');
+                        console.log('첫 번째 아이템:', processedData[0]);
+                        listEl.innerHTML = processedData.map((item, index) => 
+                            createRankingItem(index + 1, item.name, item.usage, '%')
+                        ).join('');
+                    } else {
+                        console.log('폴백 데이터 사용');
+                        listEl.innerHTML = fallbackData.items.map((item, index) => 
+                            createRankingItem(index + 1, item.name, item.usage, '%')
+                        ).join('');
+                    }
+                }, 2500);
+                
+            } catch (error) {
+                console.error('최다 사용 아이템 데이터 오류:', error);
+                showError('items', '데이터를 불러올 수 없습니다. 폴백 데이터를 사용합니다.');
+                
+                setTimeout(() => {
+                    loadingEl.style.display = 'none';
+                    listEl.style.display = 'block';
+                    listEl.innerHTML = fallbackData.items.map((item, index) => 
+                        createRankingItem(index + 1, item.name, item.usage, '%')
+                    ).join('');
+                }, 2500);
+            }
+        }
+
+        // 메인 데이터 로딩 함수
+        async function fetchAllData() {
+            try {
+                console.log('Deadlock API 연결 시도 중...');
+                console.log('Steam API 키:', API_KEY);
+                
+                // 아이템 데이터 먼저 로드하고 완료될 때까지 대기
+                console.log('아이템 데이터 로딩 시작...');
+                await loadItemsData();
+                console.log('아이템 데이터 로딩 완료, 개수:', itemsData ? itemsData.length : 0);
+                
+                // 캐릭터 데이터 로드 (병렬)
+                await Promise.all([
+                    displayMostPlayed(),
+                    displayWinRate()
+                ]);
+                
+                // 아이템 데이터는 아이템 정보가 로드된 후에 처리
+                await displayItems();
+                
+                console.log('모든 데이터 로딩 완료');
+                
+            } catch (error) {
+                console.error('전체 데이터 로딩 오류:', error);
+                document.querySelectorAll('.loading').forEach(el => {
+                    el.innerHTML = '<div class="error">데이터를 불러올 수 없습니다.</div>';
+                });
+            }
+        }
+
+        // 테스트 함수
+        function testItemNameMapping() {
+            console.log('=== 아이템 이름 매핑 테스트 ===');
+            const testIds = [3261353684, 7409189, 26002154, 84321454];
+            testIds.forEach(id => {
+                const name = getItemName(id);
+                console.log(`ID ${id} -> ${name}`);
+            });
+        }
+        
+        // 페이지 로드 시 데이터 가져오기
+        window.addEventListener('load', async () => {
+            await fetchAllData();
+            
+            // 테스트 실행
+            setTimeout(() => {
+                testItemNameMapping();
+            }, 5000);
+        });
+
+        // 실시간 업데이트 (10분마다)
+        setInterval(() => {
+            console.log('데이터 업데이트 중...');
+            fetchAllData();
+        }, 600000); // 10분마다 업데이트
+    </script>
+</body>
+</html>
