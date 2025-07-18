@@ -1,13 +1,20 @@
 FROM tomcat:9.0-jdk11-openjdk
 
-# Remove default apps
+# Remove default webapps
 RUN rm -rf /usr/local/tomcat/webapps/*
 
-# Copy our app
+# Copy webapp
 COPY webapp/ /usr/local/tomcat/webapps/ROOT/
 
-# Expose port
-EXPOSE 8080
+# Create startup script that handles dynamic port
+RUN echo '#!/bin/bash\n\
+if [ -n "$PORT" ]; then\n\
+  sed -i "s/8080/$PORT/g" /usr/local/tomcat/conf/server.xml\n\
+fi\n\
+catalina.sh run' > /start.sh && chmod +x /start.sh
 
-# Start tomcat in foreground
-CMD ["catalina.sh", "run"]
+# Expose dynamic port
+EXPOSE $PORT
+
+# Use startup script
+CMD ["/start.sh"]
