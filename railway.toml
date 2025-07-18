@@ -3,7 +3,6 @@ builder = "dockerfile"
 
 [deploy]
 startCommand = "catalina.sh run"
-healthcheckPath = "/"
-healthcheckTimeout = 100
-restartPolicyType = "on_failure"
-restartPolicyMaxRetries = 3
+healthcheckPath = "/health.jsp"
+healthcheckTimeout = 300
+restartPolicyType = "always"
