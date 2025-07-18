@@ -1,16 +1,13 @@
 FROM tomcat:9.0-jdk11-openjdk
 
-# Remove default ROOT webapp
-RUN rm -rf /usr/local/tomcat/webapps/ROOT
+# Remove default apps
+RUN rm -rf /usr/local/tomcat/webapps/*
 
-# Copy our webapp as ROOT
+# Copy our app
 COPY webapp/ /usr/local/tomcat/webapps/ROOT/
-
-# Make sure Tomcat starts properly
-ENV CATALINA_OPTS="-Djava.awt.headless=true -server -Xms512m -Xmx1024m"
 
 # Expose port
 EXPOSE 8080
 
-# Start Tomcat
+# Start tomcat in foreground
 CMD ["catalina.sh", "run"]
